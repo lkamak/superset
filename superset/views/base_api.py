@@ -18,9 +18,12 @@ from __future__ import annotations
 
 import functools
 import logging
+from datetime import datetime
+from io import BytesIO
 from typing import Any, Callable, cast
+from zipfile import ZipFile
 
-from flask import request, Response
+from flask import request, Response, send_file
 from flask_appbuilder import Model, ModelRestApi
 from flask_appbuilder.api import (
     BaseApi,
@@ -33,12 +36,18 @@ from flask_appbuilder.const import API_FILTERS_RIS_KEY
 from flask_appbuilder.models.filters import BaseFilter, Filters
 from flask_appbuilder.models.sqla.filters import FilterStartsWith
 from flask_appbuilder.models.sqla.interface import SQLAInterface
-from flask_babel import lazy_gettext as _
+from flask_babel import lazy_gettext as _, ngettext
 from marshmallow import fields, Schema
 from sqlalchemy import and_, distinct, func
 from sqlalchemy.orm.query import Query
 
 from superset import is_feature_enabled
+from superset.commands.exceptions import (
+    CommandException,
+    DeleteFailedError,
+    ForbiddenError,
+    ObjectNotFoundError,
+)
 from superset.exceptions import InvalidPayloadFormatError
 from superset.extensions import db, event_logger, security_manager, stats_logger_manager
 from superset.models.core import FavStar
@@ -377,6 +386,86 @@ class BaseSupersetModelRestApi(BaseSupersetApiMixin, ModelRestApi):
         if self.add_columns is None and not self.add_model_schema:
             self.add_columns = [model_id]
         super()._init_properties()
+
+    def _handle_bulk_delete(
+        self,
+        item_ids: list[int],
+        delete_command_class: Callable[..., Any],
+        singular: str,
+        plural: str,
+        not_found_error: type[CommandException] = ObjectNotFoundError,
+        forbidden_error: type[CommandException] | None = ForbiddenError,
+        delete_failed_error: type[CommandException]
+        | tuple[type[CommandException], ...] = DeleteFailedError,
+    ) -> Response:
+        """
+        Shared bulk-delete logic for REST API endpoints.
+
+        :param item_ids: list of IDs to delete
+        :param delete_command_class: command class to instantiate with item_ids
+        :param singular: singular ngettext form, e.g. "Deleted %(num)d chart"
+        :param plural: plural ngettext form, e.g. "Deleted %(num)d charts"
+        :param not_found_error: exception class for 404 responses
+        :param forbidden_error: exception class for 403 responses (None to skip)
+        :param delete_failed_error: exception class(es) for 422 responses
+        """
+        try:
+            delete_command_class(item_ids).run()
+            return self.response(
+                200,
+                message=ngettext(singular, plural, num=len(item_ids)),
+            )
+        except CommandException as ex:
+            if isinstance(ex, not_found_error):
+                return self.response_404()
+            if forbidden_error and isinstance(ex, forbidden_error):
+                return self.response_403()
+            if isinstance(ex, delete_failed_error):
+                return self.response_422(message=str(ex))
+            raise
+
+    def _handle_export(
+        self,
+        requested_ids: list[int],
+        export_command_class: Callable[..., Any],
+        resource_name: str,
+        not_found_error: type[CommandException] = ObjectNotFoundError,
+    ) -> Response:
+        """
+        Shared export-as-zip logic for REST API endpoints.
+
+        :param requested_ids: list of IDs to export
+        :param export_command_class: command class to instantiate with ids
+        :param resource_name: used for the zip filename, e.g. "chart"
+        :param not_found_error: exception class for 404 responses
+        """
+        timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+        root = f"{resource_name}_export_{timestamp}"
+        filename = f"{root}.zip"
+
+        buf = BytesIO()
+        with ZipFile(buf, "w") as bundle:
+            try:
+                for file_name, file_content in export_command_class(
+                    requested_ids
+                ).run():
+                    with bundle.open(f"{root}/{file_name}", "w") as fp:
+                        fp.write(file_content().encode())
+            except CommandException as ex:
+                if isinstance(ex, not_found_error):
+                    return self.response_404()
+                raise
+        buf.seek(0)
+
+        response = send_file(
+            buf,
+            mimetype="application/zip",
+            as_attachment=True,
+            download_name=filename,
+        )
+        if token := request.args.get("token"):
+            response.set_cookie(token, "done", max_age=600)
+        return response
 
     def _handle_filters_args(self, rison_args: dict[str, Any]) -> Filters:
         """

@@ -27,7 +27,6 @@ from flask_appbuilder.api import (
 )
 from flask_appbuilder.api.schemas import get_item_schema, get_list_schema
 from flask_appbuilder.models.sqla.interface import SQLAInterface
-from flask_babel import ngettext
 from marshmallow import ValidationError
 
 from superset.annotation_layers.annotations.filters import AnnotationAllTextFilter
@@ -483,18 +482,12 @@ class AnnotationRestApi(BaseSupersetModelRestApi):
             500:
               $ref: '#/components/responses/500'
         """
-        item_ids = kwargs["rison"]
-        try:
-            DeleteAnnotationCommand(item_ids).run()
-            return self.response(
-                200,
-                message=ngettext(
-                    "Deleted %(num)d annotation",
-                    "Deleted %(num)d annotations",
-                    num=len(item_ids),
-                ),
-            )
-        except AnnotationNotFoundError:
-            return self.response_404()
-        except AnnotationDeleteFailedError as ex:
-            return self.response_422(message=str(ex))
+        return self._handle_bulk_delete(
+            item_ids=kwargs["rison"],
+            delete_command_class=DeleteAnnotationCommand,
+            singular="Deleted %(num)d annotation",
+            plural="Deleted %(num)d annotations",
+            not_found_error=AnnotationNotFoundError,
+            forbidden_error=None,
+            delete_failed_error=AnnotationDeleteFailedError,
+        )

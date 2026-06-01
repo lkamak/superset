@@ -26,7 +26,6 @@ from flask_appbuilder.api import (
     safe,
 )
 from flask_appbuilder.models.sqla.interface import SQLAInterface
-from flask_babel import ngettext
 from marshmallow import ValidationError
 
 from superset.annotation_layers.filters import AnnotationLayerAllTextFilter
@@ -341,20 +340,15 @@ class AnnotationLayerRestApi(BaseSupersetModelRestApi):
             500:
               $ref: '#/components/responses/500'
         """
-        item_ids = kwargs["rison"]
-        try:
-            DeleteAnnotationLayerCommand(item_ids).run()
-            return self.response(
-                200,
-                message=ngettext(
-                    "Deleted %(num)d annotation layer",
-                    "Deleted %(num)d annotation layers",
-                    num=len(item_ids),
-                ),
-            )
-        except AnnotationLayerNotFoundError:
-            return self.response_404()
-        except AnnotationLayerDeleteIntegrityError as ex:
-            return self.response_422(message=str(ex))
-        except AnnotationLayerDeleteFailedError as ex:
-            return self.response_422(message=str(ex))
+        return self._handle_bulk_delete(
+            item_ids=kwargs["rison"],
+            delete_command_class=DeleteAnnotationLayerCommand,
+            singular="Deleted %(num)d annotation layer",
+            plural="Deleted %(num)d annotation layers",
+            not_found_error=AnnotationLayerNotFoundError,
+            forbidden_error=None,
+            delete_failed_error=(
+                AnnotationLayerDeleteIntegrityError,
+                AnnotationLayerDeleteFailedError,
+            ),
+        )

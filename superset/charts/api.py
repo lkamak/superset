@@ -16,16 +16,13 @@
 # under the License.
 # pylint: disable=too-many-lines
 import logging
-from datetime import datetime
-from io import BytesIO
 from typing import Any, cast, Optional
 from zipfile import is_zipfile, ZipFile
 
-from flask import redirect, request, Response, send_file, url_for
+from flask import redirect, request, Response, url_for
 from flask_appbuilder.api import expose, protect, rison as parse_rison, safe
 from flask_appbuilder.hooks import before_request
 from flask_appbuilder.models.sqla.interface import SQLAInterface
-from flask_babel import ngettext
 from marshmallow import ValidationError
 from werkzeug.wrappers import Response as WerkzeugResponse
 from werkzeug.wsgi import FileWrapper
@@ -552,21 +549,15 @@ class ChartRestApi(BaseSupersetModelRestApi):
             500:
               $ref: '#/components/responses/500'
         """
-        item_ids = kwargs["rison"]
-        try:
-            DeleteChartCommand(item_ids).run()
-            return self.response(
-                200,
-                message=ngettext(
-                    "Deleted %(num)d chart", "Deleted %(num)d charts", num=len(item_ids)
-                ),
-            )
-        except ChartNotFoundError:
-            return self.response_404()
-        except ChartForbiddenError:
-            return self.response_403()
-        except ChartDeleteFailedError as ex:
-            return self.response_422(message=str(ex))
+        return self._handle_bulk_delete(
+            item_ids=kwargs["rison"],
+            delete_command_class=DeleteChartCommand,
+            singular="Deleted %(num)d chart",
+            plural="Deleted %(num)d charts",
+            not_found_error=ChartNotFoundError,
+            forbidden_error=ChartForbiddenError,
+            delete_failed_error=ChartDeleteFailedError,
+        )
 
     @expose("/<pk>/cache_screenshot/", methods=("GET",))
     @protect()
@@ -858,30 +849,12 @@ class ChartRestApi(BaseSupersetModelRestApi):
             500:
               $ref: '#/components/responses/500'
         """
-        requested_ids = kwargs["rison"]
-        timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-        root = f"chart_export_{timestamp}"
-        filename = f"{root}.zip"
-
-        buf = BytesIO()
-        with ZipFile(buf, "w") as bundle:
-            try:
-                for file_name, file_content in ExportChartsCommand(requested_ids).run():
-                    with bundle.open(f"{root}/{file_name}", "w") as fp:
-                        fp.write(file_content().encode())
-            except ChartNotFoundError:
-                return self.response_404()
-        buf.seek(0)
-
-        response = send_file(
-            buf,
-            mimetype="application/zip",
-            as_attachment=True,
-            download_name=filename,
+        return self._handle_export(
+            requested_ids=kwargs["rison"],
+            export_command_class=ExportChartsCommand,
+            resource_name="chart",
+            not_found_error=ChartNotFoundError,
         )
-        if token := request.args.get("token"):
-            response.set_cookie(token, "done", max_age=600)
-        return response
 
     @expose("/favorite_status/", methods=("GET",))
     @protect()

@@ -17,7 +17,6 @@
 # pylint: disable=too-many-lines
 import functools
 import logging
-from datetime import datetime
 from io import BytesIO
 from typing import Any, Callable, cast
 from zipfile import is_zipfile, ZipFile
@@ -40,7 +39,7 @@ from flask_appbuilder.const import (
     API_ORDER_COLUMNS_RIS_KEY,
 )
 from flask_appbuilder.models.sqla.interface import SQLAInterface
-from flask_babel import gettext, ngettext
+from flask_babel import gettext
 from marshmallow import ValidationError
 from werkzeug.wrappers import Response as WerkzeugResponse
 from werkzeug.wsgi import FileWrapper
@@ -1176,23 +1175,15 @@ class DashboardRestApi(CustomTagsOptimizationMixin, BaseSupersetModelRestApi):
             500:
               $ref: '#/components/responses/500'
         """
-        item_ids = kwargs["rison"]
-        try:
-            DeleteDashboardCommand(item_ids).run()
-            return self.response(
-                200,
-                message=ngettext(
-                    "Deleted %(num)d dashboard",
-                    "Deleted %(num)d dashboards",
-                    num=len(item_ids),
-                ),
-            )
-        except DashboardNotFoundError:
-            return self.response_404()
-        except DashboardForbiddenError:
-            return self.response_403()
-        except DashboardDeleteFailedError as ex:
-            return self.response_422(message=str(ex))
+        return self._handle_bulk_delete(
+            item_ids=kwargs["rison"],
+            delete_command_class=DeleteDashboardCommand,
+            singular="Deleted %(num)d dashboard",
+            plural="Deleted %(num)d dashboards",
+            not_found_error=DashboardNotFoundError,
+            forbidden_error=DashboardForbiddenError,
+            delete_failed_error=DashboardDeleteFailedError,
+        )
 
     @expose("/export/", methods=("GET",))
     @protect()
@@ -1233,33 +1224,12 @@ class DashboardRestApi(CustomTagsOptimizationMixin, BaseSupersetModelRestApi):
             500:
               $ref: '#/components/responses/500'
         """
-        requested_ids = kwargs["rison"]
-
-        timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-        root = f"dashboard_export_{timestamp}"
-        filename = f"{root}.zip"
-
-        buf = BytesIO()
-        with ZipFile(buf, "w") as bundle:
-            try:
-                for file_name, file_content in ExportDashboardsCommand(
-                    requested_ids
-                ).run():
-                    with bundle.open(f"{root}/{file_name}", "w") as fp:
-                        fp.write(file_content().encode())
-            except DashboardNotFoundError:
-                return self.response_404()
-        buf.seek(0)
-
-        response = send_file(
-            buf,
-            mimetype="application/zip",
-            as_attachment=True,
-            download_name=filename,
+        return self._handle_export(
+            requested_ids=kwargs["rison"],
+            export_command_class=ExportDashboardsCommand,
+            resource_name="dashboard",
+            not_found_error=DashboardNotFoundError,
         )
-        if token := request.args.get("token"):
-            response.set_cookie(token, "done", max_age=600)
-        return response
 
     @expose("/<pk>/export_as_example/", methods=("GET",))
     @protect()

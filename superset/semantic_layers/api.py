@@ -23,7 +23,7 @@ from flask import make_response, request, Response
 from flask_appbuilder.api import expose, protect, rison, safe
 from flask_appbuilder.api.schemas import get_list_schema
 from flask_appbuilder.models.sqla.interface import SQLAInterface
-from flask_babel import lazy_gettext as t, ngettext
+from flask_babel import lazy_gettext as t
 from marshmallow import ValidationError
 from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy.orm import load_only
@@ -505,28 +505,15 @@ class SemanticViewRestApi(BaseSupersetModelRestApi):
         if not is_feature_enabled("SEMANTIC_LAYERS"):
             return self.response_404()
 
-        item_ids: list[int] = kwargs["rison"]
-        try:
-            BulkDeleteSemanticViewCommand(item_ids).run()
-            return self.response(
-                200,
-                message=ngettext(
-                    "Deleted %(num)d semantic view",
-                    "Deleted %(num)d semantic views",
-                    num=len(item_ids),
-                ),
-            )
-        except SemanticViewNotFoundError:
-            return self.response_404()
-        except SemanticViewForbiddenError:
-            return self.response_403()
-        except SemanticViewDeleteFailedError as ex:
-            logger.error(
-                "Error bulk deleting semantic views: %s",
-                str(ex),
-                exc_info=True,
-            )
-            return self.response_422(message=str(ex))
+        return self._handle_bulk_delete(
+            item_ids=kwargs["rison"],
+            delete_command_class=BulkDeleteSemanticViewCommand,
+            singular="Deleted %(num)d semantic view",
+            plural="Deleted %(num)d semantic views",
+            not_found_error=SemanticViewNotFoundError,
+            forbidden_error=SemanticViewForbiddenError,
+            delete_failed_error=SemanticViewDeleteFailedError,
+        )
 
 
 class SemanticLayerRestApi(BaseSupersetApi):

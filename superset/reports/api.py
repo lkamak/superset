@@ -27,7 +27,6 @@ from flask_appbuilder.api import (
 )
 from flask_appbuilder.hooks import before_request
 from flask_appbuilder.models.sqla.interface import SQLAInterface
-from flask_babel import ngettext
 from marshmallow import ValidationError
 
 from superset import is_feature_enabled
@@ -592,23 +591,15 @@ class ReportScheduleRestApi(BaseSupersetModelRestApi):
             500:
               $ref: '#/components/responses/500'
         """
-        item_ids = kwargs["rison"]
-        try:
-            DeleteReportScheduleCommand(item_ids).run()
-            return self.response(
-                200,
-                message=ngettext(
-                    "Deleted %(num)d report schedule",
-                    "Deleted %(num)d report schedules",
-                    num=len(item_ids),
-                ),
-            )
-        except ReportScheduleNotFoundError:
-            return self.response_404()
-        except ReportScheduleForbiddenError:
-            return self.response_403()
-        except ReportScheduleDeleteFailedError as ex:
-            return self.response_422(message=str(ex))
+        return self._handle_bulk_delete(
+            item_ids=kwargs["rison"],
+            delete_command_class=DeleteReportScheduleCommand,
+            singular="Deleted %(num)d report schedule",
+            plural="Deleted %(num)d report schedules",
+            not_found_error=ReportScheduleNotFoundError,
+            forbidden_error=ReportScheduleForbiddenError,
+            delete_failed_error=ReportScheduleDeleteFailedError,
+        )
 
     @expose("/slack_channels/", methods=("GET",))
     @protect()
@@ -616,9 +607,9 @@ class ReportScheduleRestApi(BaseSupersetModelRestApi):
     @safe
     @statsd_metrics
     @event_logger.log_this_with_context(
-        action=lambda self,
-        *args,
-        **kwargs: f"{self.__class__.__name__}.slack_channels",
+        action=lambda self, *args, **kwargs: (
+            f"{self.__class__.__name__}.slack_channels"
+        ),
         log_to_statsd=False,
     )
     def slack_channels(self, **kwargs: Any) -> Response:

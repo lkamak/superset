@@ -15,15 +15,12 @@
 # specific language governing permissions and limitations
 # under the License.
 import logging
-from datetime import datetime
-from io import BytesIO
 from typing import Any
 from zipfile import is_zipfile, ZipFile
 
-from flask import g, request, Response, send_file
+from flask import g, request, Response
 from flask_appbuilder.api import expose, protect, rison as parse_rison, safe
 from flask_appbuilder.models.sqla.interface import SQLAInterface
-from flask_babel import ngettext
 
 from superset.commands.importers.exceptions import (
     IncorrectFormatError,
@@ -232,21 +229,15 @@ class SavedQueryRestApi(BaseSupersetModelRestApi):
             500:
               $ref: '#/components/responses/500'
         """
-        item_ids = kwargs["rison"]
-        try:
-            DeleteSavedQueryCommand(item_ids).run()
-            return self.response(
-                200,
-                message=ngettext(
-                    "Deleted %(num)d saved query",
-                    "Deleted %(num)d saved queries",
-                    num=len(item_ids),
-                ),
-            )
-        except SavedQueryNotFoundError:
-            return self.response_404()
-        except SavedQueryDeleteFailedError as ex:
-            return self.response_422(message=str(ex))
+        return self._handle_bulk_delete(
+            item_ids=kwargs["rison"],
+            delete_command_class=DeleteSavedQueryCommand,
+            singular="Deleted %(num)d saved query",
+            plural="Deleted %(num)d saved queries",
+            not_found_error=SavedQueryNotFoundError,
+            forbidden_error=None,
+            delete_failed_error=SavedQueryDeleteFailedError,
+        )
 
     @expose("/export/", methods=("GET",))
     @protect()
@@ -282,32 +273,12 @@ class SavedQueryRestApi(BaseSupersetModelRestApi):
             500:
               $ref: '#/components/responses/500'
         """
-        requested_ids = kwargs["rison"]
-        timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-        root = f"saved_query_export_{timestamp}"
-        filename = f"{root}.zip"
-
-        buf = BytesIO()
-        with ZipFile(buf, "w") as bundle:
-            try:
-                for file_name, file_content in ExportSavedQueriesCommand(
-                    requested_ids
-                ).run():
-                    with bundle.open(f"{root}/{file_name}", "w") as fp:
-                        fp.write(file_content().encode())
-            except SavedQueryNotFoundError:
-                return self.response_404()
-        buf.seek(0)
-
-        response = send_file(
-            buf,
-            mimetype="application/zip",
-            as_attachment=True,
-            download_name=filename,
+        return self._handle_export(
+            requested_ids=kwargs["rison"],
+            export_command_class=ExportSavedQueriesCommand,
+            resource_name="saved_query",
+            not_found_error=SavedQueryNotFoundError,
         )
-        if token := request.args.get("token"):
-            response.set_cookie(token, "done", max_age=600)
-        return response
 
     @expose("/import/", methods=("POST",))
     @protect()

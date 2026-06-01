@@ -21,7 +21,6 @@ from typing import Any
 from flask import request, Response
 from flask_appbuilder.api import expose, protect, rison as parse_rison, safe
 from flask_appbuilder.models.sqla.interface import SQLAInterface
-from flask_babel import ngettext
 from marshmallow import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -355,16 +354,11 @@ class RLSRestApi(BaseSupersetModelRestApi):
             500:
               $ref: '#/components/responses/500'
         """
-        item_ids = kwargs["rison"]
-        try:
-            DeleteRLSRuleCommand(item_ids).run()
-            return self.response(
-                200,
-                message=ngettext(
-                    "Deleted %(num)d rules",
-                    "Deleted %(num)d rules",
-                    num=len(item_ids),
-                ),
-            )
-        except RLSRuleNotFoundError:
-            return self.response_404()
+        return self._handle_bulk_delete(
+            item_ids=kwargs["rison"],
+            delete_command_class=DeleteRLSRuleCommand,
+            singular="Deleted %(num)d rules",
+            plural="Deleted %(num)d rules",
+            not_found_error=RLSRuleNotFoundError,
+            forbidden_error=None,
+        )

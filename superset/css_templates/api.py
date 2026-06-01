@@ -20,7 +20,6 @@ from typing import Any
 from flask import Response
 from flask_appbuilder.api import expose, protect, rison as parse_rison, safe
 from flask_appbuilder.models.sqla.interface import SQLAInterface
-from flask_babel import ngettext
 
 from superset.commands.css.delete import DeleteCssTemplateCommand
 from superset.commands.css.exceptions import (
@@ -143,18 +142,12 @@ class CssTemplateRestApi(BaseSupersetModelRestApi):
             500:
               $ref: '#/components/responses/500'
         """
-        item_ids = kwargs["rison"]
-        try:
-            DeleteCssTemplateCommand(item_ids).run()
-            return self.response(
-                200,
-                message=ngettext(
-                    "Deleted %(num)d css template",
-                    "Deleted %(num)d css templates",
-                    num=len(item_ids),
-                ),
-            )
-        except CssTemplateNotFoundError:
-            return self.response_404()
-        except CssTemplateDeleteFailedError as ex:
-            return self.response_422(message=str(ex))
+        return self._handle_bulk_delete(
+            item_ids=kwargs["rison"],
+            delete_command_class=DeleteCssTemplateCommand,
+            singular="Deleted %(num)d css template",
+            plural="Deleted %(num)d css templates",
+            not_found_error=CssTemplateNotFoundError,
+            forbidden_error=None,
+            delete_failed_error=CssTemplateDeleteFailedError,
+        )

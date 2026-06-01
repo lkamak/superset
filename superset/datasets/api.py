@@ -18,17 +18,14 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
-from io import BytesIO
 from typing import Any, Callable
 from zipfile import is_zipfile, ZipFile
 
-from flask import request, Response, send_file
+from flask import request, Response
 from flask_appbuilder.api import expose, protect, rison as parse_rison, safe
 from flask_appbuilder.api.schemas import get_item_schema
 from flask_appbuilder.const import API_RESULT_RES_KEY, API_SELECT_COLUMNS_RIS_KEY
 from flask_appbuilder.models.sqla.interface import SQLAInterface
-from flask_babel import ngettext
 from jinja2.exceptions import TemplateSyntaxError
 from marshmallow import ValidationError
 
@@ -546,33 +543,12 @@ class DatasetRestApi(BaseSupersetModelRestApi):
             500:
               $ref: '#/components/responses/500'
         """
-        requested_ids = kwargs["rison"]
-
-        timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-        root = f"dataset_export_{timestamp}"
-        filename = f"{root}.zip"
-
-        buf = BytesIO()
-        with ZipFile(buf, "w") as bundle:
-            try:
-                for file_name, file_content in ExportDatasetsCommand(
-                    requested_ids
-                ).run():
-                    with bundle.open(f"{root}/{file_name}", "w") as fp:
-                        fp.write(file_content().encode())
-            except DatasetNotFoundError:
-                return self.response_404()
-        buf.seek(0)
-
-        response = send_file(
-            buf,
-            mimetype="application/zip",
-            as_attachment=True,
-            download_name=filename,
+        return self._handle_export(
+            requested_ids=kwargs["rison"],
+            export_command_class=ExportDatasetsCommand,
+            resource_name="dataset",
+            not_found_error=DatasetNotFoundError,
         )
-        if token := request.args.get("token"):
-            response.set_cookie(token, "done", max_age=600)
-        return response
 
     @expose("/duplicate", methods=("POST",))
     @protect()
@@ -706,8 +682,9 @@ class DatasetRestApi(BaseSupersetModelRestApi):
     @safe
     @statsd_metrics
     @event_logger.log_this_with_context(
-        action=lambda self, *args, **kwargs: f"{self.__class__.__name__}"
-        ".detect_datetime_formats",
+        action=lambda self, *args, **kwargs: (
+            f"{self.__class__.__name__}.detect_datetime_formats"
+        ),
         log_to_statsd=False,
     )
     def detect_datetime_formats(self, pk: int) -> Response:
@@ -788,8 +765,9 @@ class DatasetRestApi(BaseSupersetModelRestApi):
     @safe
     @statsd_metrics
     @event_logger.log_this_with_context(
-        action=lambda self, *args, **kwargs: f"{self.__class__.__name__}"
-        f".related_objects",
+        action=lambda self, *args, **kwargs: (
+            f"{self.__class__.__name__}.related_objects"
+        ),
         log_to_statsd=False,
     )
     def related_objects(self, id_or_uuid: str) -> Response:
@@ -888,23 +866,15 @@ class DatasetRestApi(BaseSupersetModelRestApi):
             500:
               $ref: '#/components/responses/500'
         """
-        item_ids = kwargs["rison"]
-        try:
-            DeleteDatasetCommand(item_ids).run()
-            return self.response(
-                200,
-                message=ngettext(
-                    "Deleted %(num)d dataset",
-                    "Deleted %(num)d datasets",
-                    num=len(item_ids),
-                ),
-            )
-        except DatasetNotFoundError:
-            return self.response_404()
-        except DatasetForbiddenError:
-            return self.response_403()
-        except DatasetDeleteFailedError as ex:
-            return self.response_422(message=str(ex))
+        return self._handle_bulk_delete(
+            item_ids=kwargs["rison"],
+            delete_command_class=DeleteDatasetCommand,
+            singular="Deleted %(num)d dataset",
+            plural="Deleted %(num)d datasets",
+            not_found_error=DatasetNotFoundError,
+            forbidden_error=DatasetForbiddenError,
+            delete_failed_error=DatasetDeleteFailedError,
+        )
 
     @expose("/import/", methods=("POST",))
     @protect()
@@ -1045,8 +1015,9 @@ class DatasetRestApi(BaseSupersetModelRestApi):
     @safe
     @statsd_metrics
     @event_logger.log_this_with_context(
-        action=lambda self, *args, **kwargs: f"{self.__class__.__name__}"
-        f".get_or_create_dataset",
+        action=lambda self, *args, **kwargs: (
+            f"{self.__class__.__name__}.get_or_create_dataset"
+        ),
         log_to_statsd=False,
     )
     def get_or_create_dataset(self) -> Response:
@@ -1266,9 +1237,9 @@ class DatasetRestApi(BaseSupersetModelRestApi):
     @safe
     @statsd_metrics
     @event_logger.log_this_with_context(
-        action=lambda self,
-        *args,
-        **kwargs: f"{self.__class__.__name__}.get_drill_info",
+        action=lambda self, *args, **kwargs: (
+            f"{self.__class__.__name__}.get_drill_info"
+        ),
         log_to_statsd=False,
     )
     def get_drill_info(self, pk: int, **kwargs: Any) -> Response:
