@@ -17,7 +17,9 @@
 from __future__ import annotations
 
 import json
+import logging
 import pickle
+import warnings
 from abc import ABC, abstractmethod
 from typing import Any, TypedDict, Union
 from uuid import UUID
@@ -29,6 +31,8 @@ from superset.key_value.exceptions import (
     KeyValueCodecEncodeException,
 )
 from superset.utils.backports import StrEnum
+
+logger = logging.getLogger(__name__)
 
 Key = Union[int, UUID]
 
@@ -78,6 +82,25 @@ class JsonKeyValueCodec(KeyValueCodec):
 
 
 class PickleKeyValueCodec(KeyValueCodec):
+    """Pickle-based codec — **deprecated** due to deserialization risk.
+
+    ``pickle.loads`` can execute arbitrary code when the stored bytes are
+    attacker-controlled.  Use :class:`JsonKeyValueCodec` instead.
+    """
+
+    def __init__(self) -> None:
+        warnings.warn(
+            "PickleKeyValueCodec is deprecated and will be removed in a future "
+            "version. Use JsonKeyValueCodec for safe serialization.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        logger.warning(
+            "PickleKeyValueCodec instantiated — this codec uses pickle.loads "
+            "which can execute arbitrary code on untrusted data. "
+            "Migrate to JsonKeyValueCodec."
+        )
+
     def encode(self, value: dict[Any, Any]) -> bytes:
         return pickle.dumps(value)
 
