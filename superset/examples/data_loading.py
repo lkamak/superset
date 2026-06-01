@@ -54,7 +54,9 @@ def get_dataset_config_from_yaml(example_dir: Path) -> Dict[str, Optional[str]]:
                 # Treat SQLite's 'main' schema as null (use target database default)
                 result["schema"] = None if schema == "main" else schema
         except Exception:
-            logger.debug("Could not read dataset.yaml from %s", example_dir)
+            logger.warning(
+                "Could not read dataset.yaml from %s", example_dir, exc_info=True
+            )
     return result
 
 
@@ -99,7 +101,9 @@ def _get_multi_dataset_config(
                         explicit_data_file,
                     )
     except Exception:
-        logger.debug("Could not read datasets yaml from %s", datasets_yaml)
+        logger.warning(
+            "Could not read datasets yaml from %s", datasets_yaml, exc_info=True
+        )
 
     return result
 

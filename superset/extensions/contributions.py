@@ -70,6 +70,7 @@ class ContributionProcessorRegistry:
                     getattr(processor, "__name__", repr(processor)),
                     manifest.id,
                     e,
+                    exc_info=True,
                 )
 
 

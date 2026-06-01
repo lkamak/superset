@@ -18,6 +18,7 @@
  */
 import { normalizeTimestamp, QueryState } from '@superset-ui/core';
 import { t } from '@apache-superset/core/translation';
+import { logging } from '@apache-superset/core/utils';
 import { isEqual, omit } from 'lodash';
 import { shallowEqual } from 'react-redux';
 import { now } from '@superset-ui/core/utils/dates';
@@ -516,7 +517,10 @@ export default function sqlLabReducer(
         );
         localStorage.setItem('redux', JSON.stringify({ sqlLab }));
       } catch (error) {
-        // continue regardless of error
+        logging.warn(
+          'Failed to update localStorage during query editor migration',
+          error,
+        );
       }
       // replace localStorage query editor with the server backed one
       return alterInArr(
@@ -535,7 +539,10 @@ export default function sqlLabReducer(
         );
         localStorage.setItem('redux', JSON.stringify({ sqlLab }));
       } catch (error) {
-        // continue regardless of error
+        logging.warn(
+          'Failed to update localStorage during table migration',
+          error,
+        );
       }
 
       // replace localStorage table with the server backed one

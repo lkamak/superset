@@ -18,6 +18,7 @@
  */
 import { useContext, useDeferredValue, useMemo, useState } from 'react';
 import { t } from '@apache-superset/core/translation';
+import { logging } from '@apache-superset/core/utils';
 import { DatasourceType, Metric, QueryFormData } from '@superset-ui/core';
 import { Alert } from '@apache-superset/core/components';
 import { css, styled, useTheme } from '@apache-superset/core/theme';
@@ -242,7 +243,7 @@ export default function DataSourcePanel({
     try {
       if (sessionStorage.getItem('showInfobox') === 'false') return false;
     } catch (error) {
-      // continue regardless of error
+      logging.warn('Failed to read sessionStorage for showInfobox', error);
     }
     return true;
   };
@@ -279,7 +280,7 @@ export default function DataSourcePanel({
                   try {
                     sessionStorage.setItem('showInfobox', 'false');
                   } catch (error) {
-                    // continue regardless of error
+                    logging.warn('Failed to write sessionStorage for showInfobox', error);
                   }
                 }}
                 type="info"

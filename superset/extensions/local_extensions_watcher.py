@@ -153,7 +153,9 @@ def setup_local_extensions_watcher(app: Flask) -> None:  # noqa: C901
         )
 
     except Exception as e:
-        logger.error("Failed to start LOCAL_EXTENSIONS file watcher: %s", e)
+        logger.error(
+            "Failed to start LOCAL_EXTENSIONS file watcher: %s", e, exc_info=True
+        )
 
 
 def start_local_extensions_watcher_thread(app: Flask) -> None:

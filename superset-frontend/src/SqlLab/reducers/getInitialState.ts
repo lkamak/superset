@@ -17,6 +17,7 @@
  * under the License.
  */
 import { t } from '@apache-superset/core/translation';
+import { logging } from '@apache-superset/core/utils';
 import { nanoid } from 'nanoid';
 import type { BootstrapData } from 'src/types/bootstrapTypes';
 import type { InitialState } from 'src/hooks/apiResources/sqlLab';
@@ -245,7 +246,7 @@ export default function getInitialState({
       }
     }
   } catch (error) {
-    // continue regardless of error
+    logging.warn('Failed to restore SQL Lab state from localStorage', error);
   }
 
   return {

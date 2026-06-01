@@ -20,6 +20,7 @@ import {
   sqlLab as sqlLabType,
   common as coreType,
 } from '@apache-superset/core';
+import { logging } from '@apache-superset/core/utils';
 
 const { CTASMethod } = sqlLabType;
 
@@ -133,7 +134,7 @@ export class QueryContext implements sqlLabType.QueryContext {
     try {
       parsed = JSON.parse(this.templateParams);
     } catch (e) {
-      // ignore invalid format string.
+      logging.warn('Failed to parse template parameters JSON', e);
     }
     this.parsedParams = parsed;
 

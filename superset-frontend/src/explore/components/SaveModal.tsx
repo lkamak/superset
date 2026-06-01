@@ -137,7 +137,10 @@ class SaveModal extends Component<SaveModalProps, SaveModalState> {
       try {
         lastDashboard = sessionStorage.getItem(SK_DASHBOARD_ID);
       } catch (error) {
-        // continue regardless of error
+        logging.warn(
+          'Failed to read sessionStorage for last dashboard ID',
+          error,
+        );
       }
       dashboardId = lastDashboard && parseInt(lastDashboard, 10);
     }
