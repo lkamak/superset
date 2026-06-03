@@ -112,8 +112,13 @@ class UpdateDatabaseCommand(BaseCommand):
                 old_db_connection_name=original_database_name,
                 db_connection=database,
             ).run()
-        except (OAuth2RedirectError, MissingOAuth2TokenError):
-            pass
+        except (OAuth2RedirectError, MissingOAuth2TokenError) as ex:
+            logger.warning(
+                "Permission sync skipped for database %s: %s",
+                self._model_id,
+                ex,
+                exc_info=True,
+            )
 
         return database
 

@@ -343,8 +343,9 @@ class RoleRestAPI(BaseSupersetApi):
             )
         except ForbiddenError as e:
             return self.response_403(message=str(e))
-        except Exception as e:
-            return self.response_500(message=str(e))
+        except Exception as ex:
+            logger.exception("Unhandled error in security API")
+            return self.response_500(message=str(ex))
 
 
 class UserRegistrationsRestAPI(BaseSupersetModelRestApi):
