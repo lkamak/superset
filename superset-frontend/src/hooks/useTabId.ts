@@ -18,6 +18,7 @@
  */
 import { useEffect, useState } from 'react';
 import { nanoid } from 'nanoid';
+import { logging } from '@apache-superset/core/utils';
 import {
   StrictBroadcastChannel,
   TabIdChannelMessage,
@@ -51,7 +52,7 @@ export function useTabId() {
       try {
         lastTabId = window.localStorage.getItem('last_tab_id');
       } catch (error) {
-        // continue regardless of error
+        logging.warn('Failed to read last_tab_id from localStorage', error);
       }
       const newTabId = String(
         lastTabId ? Number.parseInt(lastTabId, 10) + 1 : 1,
@@ -60,7 +61,7 @@ export function useTabId() {
         window.sessionStorage.setItem('tab_id', newTabId);
         window.localStorage.setItem('last_tab_id', newTabId);
       } catch (error) {
-        // continue regardless of error
+        logging.warn('Failed to write tab ID to storage', error);
       }
       setTabId(newTabId);
     };
@@ -68,7 +69,7 @@ export function useTabId() {
     try {
       storedTabId = window.sessionStorage.getItem('tab_id');
     } catch (error) {
-      // continue regardless of error
+      logging.warn('Failed to read tab_id from sessionStorage', error);
     }
     if (storedTabId) {
       channel.postMessage({

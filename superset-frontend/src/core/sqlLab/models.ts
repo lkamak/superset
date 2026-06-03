@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+import { logging } from '@apache-superset/core/utils';
 import {
   sqlLab as sqlLabType,
   common as coreType,
@@ -133,7 +134,7 @@ export class QueryContext implements sqlLabType.QueryContext {
     try {
       parsed = JSON.parse(this.templateParams);
     } catch (e) {
-      // ignore invalid format string.
+      logging.warn('Failed to parse template parameters', e);
     }
     this.parsedParams = parsed;
 
