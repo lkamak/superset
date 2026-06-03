@@ -347,7 +347,7 @@ def execute_sql_task(
                     start_time=start_time,
                 )
             except Exception as ex:
-                logger.debug("Query %d: %s", query_id, ex)
+                logger.error("Query %d: %s", query_id, ex, exc_info=True)
                 stats_logger = app.config["STATS_LOGGER"]
                 stats_logger.incr("error_sqllab_unhandled")
                 query = _get_query(query_id=query_id)
