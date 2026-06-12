@@ -15,12 +15,10 @@
 # specific language governing permissions and limitations
 # under the License.
 import logging
-from datetime import datetime
-from io import BytesIO
 from typing import Any
 from zipfile import ZipFile
 
-from flask import current_app as app, request, Response, send_file
+from flask import current_app as app, request, Response
 from flask_appbuilder.api import expose, protect, rison as parse_rison, safe
 from flask_appbuilder.models.sqla.interface import SQLAInterface
 from flask_babel import ngettext
@@ -468,30 +466,12 @@ class ThemeRestApi(BaseSupersetModelRestApi):
               $ref: '#/components/responses/500'
         """
         requested_ids = kwargs["rison"]
-
-        timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-        root = f"theme_export_{timestamp}"
-        filename = f"{root}.zip"
-
-        buf = BytesIO()
-        with ZipFile(buf, "w") as bundle:
-            try:
-                for file_name, file_content in ExportThemesCommand(requested_ids).run():
-                    with bundle.open(f"{root}/{file_name}", "w") as fp:
-                        fp.write(file_content().encode())
-            except ThemeNotFoundError:
-                return self.response_404()
-        buf.seek(0)
-
-        response = send_file(
-            buf,
-            mimetype="application/zip",
-            as_attachment=True,
-            download_name=filename,
+        return self._handle_export(
+            requested_ids,
+            "theme",
+            ExportThemesCommand,
+            ThemeNotFoundError,
         )
-        if token := request.args.get("token"):
-            response.set_cookie(token, "done", max_age=600)
-        return response
 
     @expose("/import/", methods=("POST",))
     @protect()

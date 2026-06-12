@@ -19,11 +19,10 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from io import BytesIO
 from typing import Any, Callable
 from zipfile import is_zipfile, ZipFile
 
-from flask import request, Response, send_file
+from flask import request, Response
 from flask_appbuilder.api import expose, protect, rison as parse_rison, safe
 from flask_appbuilder.api.schemas import get_item_schema
 from flask_appbuilder.const import API_RESULT_RES_KEY, API_SELECT_COLUMNS_RIS_KEY
@@ -547,32 +546,12 @@ class DatasetRestApi(BaseSupersetModelRestApi):
               $ref: '#/components/responses/500'
         """
         requested_ids = kwargs["rison"]
-
-        timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-        root = f"dataset_export_{timestamp}"
-        filename = f"{root}.zip"
-
-        buf = BytesIO()
-        with ZipFile(buf, "w") as bundle:
-            try:
-                for file_name, file_content in ExportDatasetsCommand(
-                    requested_ids
-                ).run():
-                    with bundle.open(f"{root}/{file_name}", "w") as fp:
-                        fp.write(file_content().encode())
-            except DatasetNotFoundError:
-                return self.response_404()
-        buf.seek(0)
-
-        response = send_file(
-            buf,
-            mimetype="application/zip",
-            as_attachment=True,
-            download_name=filename,
+        return self._handle_export(
+            requested_ids,
+            "dataset",
+            ExportDatasetsCommand,
+            DatasetNotFoundError,
         )
-        if token := request.args.get("token"):
-            response.set_cookie(token, "done", max_age=600)
-        return response
 
     @expose("/duplicate", methods=("POST",))
     @protect()
