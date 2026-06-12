@@ -18,9 +18,12 @@ from __future__ import annotations
 
 import functools
 import logging
+from datetime import datetime
+from io import BytesIO
 from typing import Any, Callable, cast
+from zipfile import ZipFile
 
-from flask import request, Response
+from flask import request, Response, send_file
 from flask_appbuilder import Model, ModelRestApi
 from flask_appbuilder.api import (
     BaseApi,
@@ -39,6 +42,8 @@ from sqlalchemy import and_, distinct, func
 from sqlalchemy.orm.query import Query
 
 from superset import is_feature_enabled
+from superset.commands.exceptions import ObjectNotFoundError
+from superset.commands.export.models import ExportModelsCommand
 from superset.exceptions import InvalidPayloadFormatError
 from superset.extensions import db, event_logger, security_manager, stats_logger_manager
 from superset.models.core import FavStar
@@ -481,6 +486,47 @@ class BaseSupersetModelRestApi(BaseSupersetApiMixin, ModelRestApi):
             # Fetch requested values from ids
             extra_rows = db.session.query(datamodel.obj).filter(pk_col.in_(ids)).all()
             result += self._get_result_from_rows(datamodel, extra_rows, column_name)
+
+    def _handle_export(
+        self,
+        requested_ids: list[int],
+        resource_name: str,
+        export_command_class: type[ExportModelsCommand],
+        not_found_error: type[Exception] = ObjectNotFoundError,
+    ) -> Response:
+        """
+        Build a zip file from an export command and return it as an attachment.
+
+        :param requested_ids: the model ids to export
+        :param resource_name: prefix used for the zip filename (e.g. ``chart``)
+        :param export_command_class: the export command to instantiate and run
+        :param not_found_error: exception class mapped to a 404 response
+        """
+        timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+        root = f"{resource_name}_export_{timestamp}"
+        filename = f"{root}.zip"
+
+        buf = BytesIO()
+        with ZipFile(buf, "w") as bundle:
+            try:
+                for file_name, file_content in export_command_class(
+                    requested_ids
+                ).run():
+                    with bundle.open(f"{root}/{file_name}", "w") as fp:
+                        fp.write(file_content().encode())
+            except not_found_error:
+                return self.response_404()
+        buf.seek(0)
+
+        response = send_file(
+            buf,
+            mimetype="application/zip",
+            as_attachment=True,
+            download_name=filename,
+        )
+        if token := request.args.get("token"):
+            response.set_cookie(token, "done", max_age=600)
+        return response
 
     @event_logger.log_this_with_context(
         action=lambda self, *args, **kwargs: f"{self.__class__.__name__}.info",

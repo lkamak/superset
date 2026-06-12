@@ -16,12 +16,10 @@
 # under the License.
 # pylint: disable=too-many-lines
 import logging
-from datetime import datetime
-from io import BytesIO
 from typing import Any, cast, Optional
 from zipfile import is_zipfile, ZipFile
 
-from flask import redirect, request, Response, send_file, url_for
+from flask import redirect, request, Response, url_for
 from flask_appbuilder.api import expose, protect, rison as parse_rison, safe
 from flask_appbuilder.hooks import before_request
 from flask_appbuilder.models.sqla.interface import SQLAInterface
@@ -859,29 +857,12 @@ class ChartRestApi(BaseSupersetModelRestApi):
               $ref: '#/components/responses/500'
         """
         requested_ids = kwargs["rison"]
-        timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-        root = f"chart_export_{timestamp}"
-        filename = f"{root}.zip"
-
-        buf = BytesIO()
-        with ZipFile(buf, "w") as bundle:
-            try:
-                for file_name, file_content in ExportChartsCommand(requested_ids).run():
-                    with bundle.open(f"{root}/{file_name}", "w") as fp:
-                        fp.write(file_content().encode())
-            except ChartNotFoundError:
-                return self.response_404()
-        buf.seek(0)
-
-        response = send_file(
-            buf,
-            mimetype="application/zip",
-            as_attachment=True,
-            download_name=filename,
+        return self._handle_export(
+            requested_ids,
+            "chart",
+            ExportChartsCommand,
+            ChartNotFoundError,
         )
-        if token := request.args.get("token"):
-            response.set_cookie(token, "done", max_age=600)
-        return response
 
     @expose("/favorite_status/", methods=("GET",))
     @protect()
