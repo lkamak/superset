@@ -32,7 +32,6 @@ from superset.connectors.sqla.models import (
     TableColumn,
 )
 from superset.daos.base import BaseDAO, ColumnOperator, ColumnOperatorEnum
-from superset.daos.dashboard import DashboardDAO
 from superset.extensions import db
 from superset.models.core import Database
 from superset.models.dashboard import Dashboard
@@ -123,6 +122,9 @@ class DatasetDAO(BaseDAO[SqlaTable]):
 
     @staticmethod
     def get_related_objects(database_id: int) -> dict[str, Any]:
+        # pylint: disable=import-outside-toplevel
+        from superset.daos.dashboard import DashboardDAO
+
         charts = (
             db.session.query(Slice)
             .filter(

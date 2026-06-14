@@ -25,7 +25,6 @@ from superset import is_feature_enabled
 from superset.commands.database.ssh_tunnel.exceptions import SSHTunnelingNotEnabledError
 from superset.connectors.sqla.models import SqlaTable
 from superset.daos.base import BaseDAO
-from superset.daos.dashboard import DashboardDAO
 from superset.databases.filters import DatabaseFilter
 from superset.databases.ssh_tunnel.models import SSHTunnel
 from superset.extensions import db
@@ -192,6 +191,9 @@ class DatabaseDAO(BaseDAO[Database]):
 
     @classmethod
     def get_related_objects(cls, database_id: int) -> dict[str, Any]:
+        # pylint: disable=import-outside-toplevel
+        from superset.daos.dashboard import DashboardDAO
+
         database: Any = cls.find_by_id(database_id)
         datasets = database.tables
         dataset_ids = [dataset.id for dataset in datasets]
