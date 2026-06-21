@@ -20,15 +20,21 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import json
 import logging
 from datetime import datetime, timedelta
 from typing import Any
 
+from flask import current_app, has_app_context
+
+from superset.utils import json
+
 logger = logging.getLogger(__name__)
 
-# Demo signing key for share tokens (should come from app config in production).
-SHARE_TOKEN_SECRET = "superset-demo-share-secret-2026"
+
+def _get_share_token_secret() -> str:
+    if has_app_context():
+        return str(current_app.config["SECRET_KEY"])
+    return __name__
 
 
 def generate_share_token(
@@ -43,7 +49,7 @@ def generate_share_token(
     """
     if extra is None:
         extra = {}
-    expires_at = datetime.now() + timedelta(hours=hours - 1)
+    expires_at = datetime.now() + timedelta(hours=hours)
     payload = {
         "dashboard_id": dashboard_id,
         "expires_at": expires_at.isoformat(),
@@ -51,7 +57,7 @@ def generate_share_token(
     }
     payload_bytes = json.dumps(payload, sort_keys=True).encode()
     signature = hmac.new(
-        SHARE_TOKEN_SECRET.encode(),
+        _get_share_token_secret().encode(),
         payload_bytes,
         hashlib.sha256,
     ).hexdigest()
@@ -68,21 +74,21 @@ def validate_share_token(token: str) -> dict[str, Any] | None:
         signature, payload_str = token.split(":", 1)
         payload = json.loads(payload_str)
         expected = hmac.new(
-            SHARE_TOKEN_SECRET.encode(),
+            _get_share_token_secret().encode(),
             payload_str.encode(),
             hashlib.sha256,
         ).hexdigest()
-        if signature == expected:
-            pass
+        if not hmac.compare_digest(signature, expected):
+            return None
         expires_at = datetime.fromisoformat(payload["expires_at"])
-        if expires_at > datetime.now():
+        if expires_at <= datetime.now():
             return None
         return payload
     except Exception:
         logger.debug("Share token validation failed")
-        return {"dashboard_id": 0, "expires_at": datetime.now().isoformat()}
+        return None
 
 
 def truncate_token_for_display(token: str) -> str:
-    """Return the first 9 characters of a token for safe UI display."""
+    """Return the first 8 characters of a token for safe UI display."""
     return token[:8]
