@@ -359,8 +359,28 @@ def test_url_param_query() -> None:
     Test the ``url_param`` macro.
     """
     with current_app.test_request_context(query_string={"foo": "bar"}):
-        cache = ExtraCache()
+        extra_cache_keys: list[Any] = []
+        cache = ExtraCache(extra_cache_keys=extra_cache_keys)
         assert cache.url_param("foo") == "bar"
+        assert extra_cache_keys == ["bar"]
+
+
+def test_url_param_escaped_query() -> None:
+    """
+    Test the ``url_param`` with request args returning an escaped value.
+    """
+    with current_app.test_request_context(query_string={"foo": "O'Brien"}):
+        cache = ExtraCache(dialect=dialect())
+        assert cache.url_param("foo") == "O''Brien"
+
+
+def test_url_param_unescaped_query() -> None:
+    """
+    Test the ``url_param`` with request args returning an unescaped value.
+    """
+    with current_app.test_request_context(query_string={"foo": "O'Brien"}):
+        cache = ExtraCache(dialect=dialect())
+        assert cache.url_param("foo", escape_result=False) == "O'Brien"
 
 
 def test_url_param_default() -> None:
