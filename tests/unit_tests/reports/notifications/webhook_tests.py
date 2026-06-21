@@ -108,6 +108,20 @@ def set_webhook_dns(
     )
 
 
+def set_webhook_dns_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    def getaddrinfo(
+        _host: str,
+        _port: int | None,
+        *_args: object,
+        **_kwargs: object,
+    ) -> None:
+        raise socket.gaierror("Name or service not known")
+
+    monkeypatch.setattr(
+        "superset.reports.notifications.webhook.socket.getaddrinfo", getaddrinfo
+    )
+
+
 def test_get_webhook_url(mock_header_data) -> None:
     """
     Test the _get_webhook_url function to ensure it correctly extracts
@@ -429,3 +443,124 @@ def test_send_allows_configured_public_host(
 
     assert posted_url == ["https://trusted.example/webhook"]
     assert posted_timeout == [60]
+
+
+@pytest.mark.parametrize(
+    ("target", "expected_message"),
+    [
+        ("trusted.example/webhook", "URL is malformed"),
+        ("https:///webhook", "URL is malformed"),
+        ("https://trusted.example:invalid/webhook", "URL port is malformed"),
+    ],
+)
+def test_send_rejects_malformed_url(
+    monkeypatch: pytest.MonkeyPatch,
+    mock_header_data: HeaderDataType,
+    target: str,
+    expected_message: str,
+) -> None:
+    webhook_notification = build_webhook_notification(mock_header_data, target)
+    enable_webhook_feature(monkeypatch)
+    set_webhook_config(
+        monkeypatch,
+        {
+            "ALERT_REPORTS_WEBHOOK_HTTPS_ONLY": True,
+            "ALERT_REPORTS_WEBHOOK_ALLOWED_HOSTS": ("trusted.example",),
+            "ALERT_REPORTS_WEBHOOK_BLOCK_PRIVATE_ADDRESSES": True,
+        },
+    )
+    monkeypatch.setattr(
+        "superset.reports.notifications.webhook.requests.post",
+        fail_post,
+    )
+
+    with pytest.raises(NotificationParamException, match=expected_message):
+        webhook_notification.send()
+
+
+def test_send_rejects_unresolvable_hostname(
+    monkeypatch: pytest.MonkeyPatch,
+    mock_header_data: HeaderDataType,
+) -> None:
+    webhook_notification = build_webhook_notification(
+        mock_header_data, "https://trusted.example/webhook"
+    )
+    enable_webhook_feature(monkeypatch)
+    set_webhook_config(
+        monkeypatch,
+        {
+            "ALERT_REPORTS_WEBHOOK_HTTPS_ONLY": True,
+            "ALERT_REPORTS_WEBHOOK_ALLOWED_HOSTS": ("trusted.example",),
+            "ALERT_REPORTS_WEBHOOK_BLOCK_PRIVATE_ADDRESSES": True,
+        },
+    )
+    set_webhook_dns_failure(monkeypatch)
+    monkeypatch.setattr(
+        "superset.reports.notifications.webhook.requests.post",
+        fail_post,
+    )
+
+    with pytest.raises(NotificationParamException, match="could not be resolved"):
+        webhook_notification.send()
+
+
+def test_send_rejects_empty_dns_result(
+    monkeypatch: pytest.MonkeyPatch,
+    mock_header_data: HeaderDataType,
+) -> None:
+    webhook_notification = build_webhook_notification(
+        mock_header_data, "https://trusted.example/webhook"
+    )
+    enable_webhook_feature(monkeypatch)
+    set_webhook_config(
+        monkeypatch,
+        {
+            "ALERT_REPORTS_WEBHOOK_HTTPS_ONLY": True,
+            "ALERT_REPORTS_WEBHOOK_ALLOWED_HOSTS": ("trusted.example",),
+            "ALERT_REPORTS_WEBHOOK_BLOCK_PRIVATE_ADDRESSES": True,
+        },
+    )
+    set_webhook_dns(monkeypatch, [])
+    monkeypatch.setattr(
+        "superset.reports.notifications.webhook.requests.post",
+        fail_post,
+    )
+
+    with pytest.raises(NotificationParamException, match="could not be resolved"):
+        webhook_notification.send()
+
+
+def test_send_allows_configured_host_when_private_address_block_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+    mock_header_data: HeaderDataType,
+) -> None:
+    webhook_notification = build_webhook_notification(
+        mock_header_data, "http://internal.example./webhook"
+    )
+    enable_webhook_feature(monkeypatch)
+    set_webhook_config(
+        monkeypatch,
+        {
+            "ALERT_REPORTS_WEBHOOK_HTTPS_ONLY": False,
+            "ALERT_REPORTS_WEBHOOK_ALLOWED_HOSTS": " INTERNAL.EXAMPLE. ",
+            "ALERT_REPORTS_WEBHOOK_BLOCK_PRIVATE_ADDRESSES": False,
+        },
+    )
+    monkeypatch.setattr(
+        "superset.reports.notifications.webhook.socket.getaddrinfo",
+        lambda *_args, **_kwargs: pytest.fail("DNS lookup should be skipped"),
+    )
+    posted_url: list[str] = []
+
+    def post(url: str, **_kwargs: object) -> MockResponse:
+        posted_url.append(url)
+        return MockResponse()
+
+    monkeypatch.setattr(
+        "superset.reports.notifications.webhook.requests.post",
+        post,
+    )
+
+    webhook_notification.send()
+
+    assert posted_url == ["http://internal.example./webhook"]
