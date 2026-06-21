@@ -4,7 +4,14 @@
     "beforeShellExecution": [
       {
         "command": ".cursor/hooks/block-dangerous-commands.sh",
-        "failClosed": false
+        "failClosed": true
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": ".cursor/hooks/block-dangerous-commands.sh",
+        "matcher": "Shell",
+        "failClosed": true
       }
     ],
     "postToolUse": [
