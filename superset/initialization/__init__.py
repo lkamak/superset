@@ -163,6 +163,7 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
         from superset.dashboards.api import DashboardRestApi
         from superset.dashboards.filter_state.api import DashboardFilterStateRestApi
         from superset.dashboards.permalink.api import DashboardPermalinkRestApi
+        from superset.views.share.api import DashboardShareRestApi
         from superset.databases.api import DatabaseRestApi
         from superset.datasets.api import DatasetRestApi
         from superset.datasets.columns.api import DatasetColumnsRestApi
@@ -253,6 +254,7 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
         appbuilder.add_api(UserRestApi)
         appbuilder.add_api(DashboardFilterStateRestApi)
         appbuilder.add_api(DashboardPermalinkRestApi)
+        appbuilder.add_api(DashboardShareRestApi)
         appbuilder.add_api(DashboardRestApi)
         appbuilder.add_api(DatabaseRestApi)
         appbuilder.add_api(DatasetRestApi)
