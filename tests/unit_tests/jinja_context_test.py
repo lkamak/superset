@@ -359,8 +359,57 @@ def test_url_param_query() -> None:
     Test the ``url_param`` macro.
     """
     with current_app.test_request_context(query_string={"foo": "bar"}):
-        cache = ExtraCache()
+        extra_cache_keys: list[Any] = []
+        cache = ExtraCache(extra_cache_keys=extra_cache_keys)
         assert cache.url_param("foo") == "bar"
+        assert extra_cache_keys == ["bar"]
+
+
+def test_url_param_escaped_query() -> None:
+    """
+    Test the ``url_param`` with request args returning an escaped value.
+    """
+    with current_app.test_request_context(query_string={"foo": "O'Brien"}):
+        extra_cache_keys: list[Any] = []
+        cache = ExtraCache(dialect=dialect(), extra_cache_keys=extra_cache_keys)
+        assert cache.url_param("foo") == "O''Brien"
+        assert extra_cache_keys == ["O''Brien"]
+
+
+def test_url_param_unescaped_query() -> None:
+    """
+    Test the ``url_param`` with request args returning an unescaped value.
+    """
+    with current_app.test_request_context(query_string={"foo": "O'Brien"}):
+        cache = ExtraCache(dialect=dialect())
+        assert cache.url_param("foo", escape_result=False) == "O'Brien"
+
+
+def test_url_param_query_skips_cache_key_when_disabled() -> None:
+    """
+    Test the ``url_param`` with request args and cache key collection disabled.
+    """
+    with current_app.test_request_context(query_string={"foo": "bar"}):
+        extra_cache_keys: list[Any] = []
+        cache = ExtraCache(extra_cache_keys=extra_cache_keys)
+        assert cache.url_param("foo", add_to_cache_keys=False) == "bar"
+        assert extra_cache_keys == []
+
+
+def test_url_param_query_takes_precedence_over_form_data() -> None:
+    """
+    Test the ``url_param`` with request args and ``url_params`` in ``form_data``.
+    """
+    with current_app.test_request_context(
+        query_string={
+            "foo": "request_value",
+            "form_data": json.dumps({"url_params": {"foo": "form_value"}}),
+        }
+    ):
+        extra_cache_keys: list[Any] = []
+        cache = ExtraCache(extra_cache_keys=extra_cache_keys)
+        assert cache.url_param("foo") == "request_value"
+        assert extra_cache_keys == ["request_value"]
 
 
 def test_url_param_default() -> None:
