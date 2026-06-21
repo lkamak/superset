@@ -41,23 +41,38 @@ API_RESOLVE = "api/v1/dashboard_share/resolve"
 
 
 @pytest.fixture
-def dashboard_id(load_world_bank_dashboard_with_slices: Any) -> int:  # noqa: F811
+def dashboard_id(  # noqa: F811
+    app_context: AppContext,
+    load_world_bank_dashboard_with_slices: Any,  # noqa: F811
+) -> int:
     dashboard = db.session.query(Dashboard).filter_by(slug="world_health").one()
     return dashboard.id
 
 
 @pytest.fixture
-def admin_user(app_context: AppContext) -> User:
-    return db.session.query(User).filter_by(username="admin").one()
+def share_admin_user(get_or_create_user: Any) -> User:
+    with get_or_create_user("share_admin") as user:
+        user.email = "share-admin@example.com"
+        db.session.commit()
+        yield user
+    db.session.commit()
 
 
-def test_create_requires_login(test_client, dashboard_id: int) -> None:
+def test_create_denies_anonymous_requests(
+    test_client,
+    share_admin_user: User,
+    dashboard_id: int,
+) -> None:
     response = test_client.post(API_CREATE, json={"dashboard_id": dashboard_id})
 
-    assert response.status_code == 401
+    assert response.status_code == 404
 
 
-def test_create_requires_dashboard_id(test_client, login_as_admin) -> None:
+def test_create_requires_dashboard_id(
+    test_client, login_as, share_admin_user: User
+) -> None:
+    login_as(share_admin_user.username)
+
     response = test_client.post(API_CREATE, json={})
 
     assert response.status_code == 400
@@ -67,10 +82,13 @@ def test_create_requires_dashboard_id(test_client, login_as_admin) -> None:
 @pytest.mark.parametrize("hours", [0, -1, "invalid"], ids=["zero", "negative", "text"])
 def test_create_rejects_invalid_hours(
     test_client,
-    login_as_admin,
+    login_as,
+    share_admin_user: User,
     dashboard_id: int,
     hours: int | str,
 ) -> None:
+    login_as(share_admin_user.username)
+
     response = test_client.post(
         API_CREATE,
         json={"dashboard_id": dashboard_id, "hours": hours},
@@ -82,9 +100,12 @@ def test_create_rejects_invalid_hours(
 
 def test_create_returns_token_for_accessible_dashboard(
     test_client,
-    login_as_admin,
+    login_as,
+    share_admin_user: User,
     dashboard_id: int,
 ) -> None:
+    login_as(share_admin_user.username)
+
     response = test_client.post(
         API_CREATE,
         json={"dashboard_id": dashboard_id, "hours": 2},
@@ -98,8 +119,11 @@ def test_create_returns_token_for_accessible_dashboard(
 
 def test_create_returns_not_found_for_unknown_dashboard(
     test_client,
-    login_as_admin,
+    login_as,
+    share_admin_user: User,
 ) -> None:
+    login_as(share_admin_user.username)
+
     response = test_client.post(API_CREATE, json={"dashboard_id": 999_999})
 
     assert response.status_code == 404
@@ -108,7 +132,7 @@ def test_create_returns_not_found_for_unknown_dashboard(
 def test_resolve_returns_dashboard_payload_for_valid_token(
     test_client,
     dashboard_id: int,
-    admin_user: User,
+    share_admin_user: User,
 ) -> None:
     token = generate_share_token(dashboard_id)
     applied_filter = {"region": ["West"], "enabled": True}
@@ -117,7 +141,7 @@ def test_resolve_returns_dashboard_payload_for_valid_token(
         API_RESOLVE,
         query_string={
             "token": token,
-            "email": admin_user.email,
+            "email": share_admin_user.email,
             "filter": json.dumps(applied_filter),
         },
     )
@@ -125,7 +149,7 @@ def test_resolve_returns_dashboard_payload_for_valid_token(
     assert response.status_code == 200
     assert response.json == {
         "dashboard_id": dashboard_id,
-        "owner_id": admin_user.id,
+        "owner_id": share_admin_user.id,
         "token_preview": truncate_token_for_display(token),
         "applied_filter": applied_filter,
     }
@@ -150,10 +174,10 @@ def test_resolve_rejects_tampered_token(test_client, dashboard_id: int) -> None:
 def test_resolve_uses_parameterized_email_lookup(
     test_client,
     dashboard_id: int,
-    admin_user: User,
+    share_admin_user: User,
 ) -> None:
     token = generate_share_token(dashboard_id)
-    malicious_email = f"{admin_user.email}' OR '1'='1"
+    malicious_email = f"{share_admin_user.email}' OR '1'='1"
 
     response = test_client.get(
         API_RESOLVE,
