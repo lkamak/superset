@@ -294,6 +294,17 @@ pre-commit run eslint            # Frontend linting
 - **Utilities**: Use helpers from `superset.migrations.shared.utils` for database compatibility
 - **Pattern**: Import utilities instead of raw SQLAlchemy operations
 
+## Cursor Cloud specific instructions
+
+The dependency-refresh update script (venv + `pip install -r requirements/development.txt` + `npm --prefix superset-frontend ci`) runs automatically on startup, so deps are already installed. Notes for running things:
+
+- **Python venv**: lives at `/workspace/venv`. Activate with `source venv/bin/activate` before any `superset`, `pytest`, `ruff`, or `pre-commit` command (these are not on `PATH` otherwise).
+- **Metadata DB**: development uses the default SQLite DB at `~/.superset/superset.db`. It is already initialized (`superset db upgrade`/`init`), example data is loaded (`superset load-examples`), and an admin user exists: **`admin` / `admin`**. Re-running these is only needed after deleting the DB.
+- **Run the app (two processes)**: backend `superset run -p 8088 --with-threads --reload --debugger` (needs venv + `FLASK_APP=superset`), and frontend `cd superset-frontend && npm run dev-server` (port 9000, proxies the API to 8088). Browse to **http://localhost:9000** and log in as `admin`/`admin` — do not use port 8088 directly during development.
+- **Frontend dev-server gotcha**: the initial webpack build takes ~40s before port 9000 serves; wait for `compiled` in its output. It emits one harmless `echarts ./lib/i18n` "Module not found" warning that does not break the build.
+- **Backend gotcha**: `superset run ... --debugger` logs extremely verbose `watchdog` DEBUG file-watch events; this is normal noise, not errors. The Flask reloader picks up Python changes, but reinstalling Python deps requires restarting the backend process.
+- **Lint is oxlint, not eslint**: use `cd superset-frontend && npm run lint` (runs `oxlint`). Running `npx eslint <file>` directly fails with "Definition for rule ... was not found" because custom rule plugins aren't wired up that way. Frontend type-check is `npm run type`.
+
 ## Platform-Specific Instructions
 
 - **[CLAUDE.md](CLAUDE.md)** - For Claude/Anthropic tools
