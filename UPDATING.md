@@ -24,6 +24,10 @@ assists people when migrating to a new version.
 
 ## Next
 
+### Webhook alert/report destination allowlist
+
+Webhook alert/report notifications require operators to configure `ALERT_REPORTS_WEBHOOK_ALLOWED_HOSTS` with the external hostnames Superset may contact. The default empty allowlist rejects webhook destinations. Superset also rejects webhook destinations that resolve to non-public IP addresses by default via `ALERT_REPORTS_WEBHOOK_BLOCK_PRIVATE_ADDRESSES = True`.
+
 ### Granular Export Controls
 
 A new feature flag `GRANULAR_EXPORT_CONTROLS` introduces three fine-grained permissions that replace the legacy `can_csv` permission:

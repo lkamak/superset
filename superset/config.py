@@ -1997,6 +1997,12 @@ ALERT_MINIMUM_INTERVAL = int(timedelta(minutes=0).total_seconds())
 REPORT_MINIMUM_INTERVAL = int(timedelta(minutes=0).total_seconds())
 # Enforce HTTPS for webhook alerts/reports
 ALERT_REPORTS_WEBHOOK_HTTPS_ONLY = True
+# Hosts that webhook alert/report notifications are allowed to contact.
+# The empty default prevents user-controlled webhook destinations until
+# operators explicitly allow the external hosts they trust.
+ALERT_REPORTS_WEBHOOK_ALLOWED_HOSTS: tuple[str, ...] = ()
+# Reject webhook destinations that resolve to non-public IP addresses.
+ALERT_REPORTS_WEBHOOK_BLOCK_PRIVATE_ADDRESSES = True
 
 # A custom prefix to use on all Alerts & Reports emails
 EMAIL_REPORTS_SUBJECT_PREFIX = "[Report] "
