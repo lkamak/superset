@@ -210,6 +210,7 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
         from superset.views.logs import ActionLogView
         from superset.views.redirect import RedirectView
         from superset.views.roles import RolesListView
+        from superset.views.share.api import DashboardShareRestApi
         from superset.views.sql_lab.views import (
             SavedQueryView,
             TableSchemaView,
@@ -253,6 +254,7 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
         appbuilder.add_api(UserRestApi)
         appbuilder.add_api(DashboardFilterStateRestApi)
         appbuilder.add_api(DashboardPermalinkRestApi)
+        appbuilder.add_api(DashboardShareRestApi)
         appbuilder.add_api(DashboardRestApi)
         appbuilder.add_api(DatabaseRestApi)
         appbuilder.add_api(DatasetRestApi)
