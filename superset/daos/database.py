@@ -33,7 +33,7 @@ from superset.models.dashboard import Dashboard
 from superset.models.helpers import SKIP_VISIBILITY_FILTER_CLASSES
 from superset.models.slice import Slice
 from superset.models.sql_lab import TabState
-from superset.utils.core import DatasourceType
+from superset.utils.core import DatasourceType, get_user_id
 from superset.utils.ssh_tunnel import unmask_password_info
 
 logger = logging.getLogger(__name__)
@@ -191,6 +191,9 @@ class DatabaseDAO(BaseDAO[Database]):
 
     @classmethod
     def get_related_objects(cls, database_id: int) -> dict[str, Any]:
+        # pylint: disable=import-outside-toplevel
+        from superset.daos.dashboard import DashboardDAO
+
         database: Any = cls.find_by_id(database_id)
         datasets = database.tables
         dataset_ids = [dataset.id for dataset in datasets]
@@ -205,18 +208,20 @@ class DatabaseDAO(BaseDAO[Database]):
         )
         chart_ids = [chart.id for chart in charts]
 
-        dashboards = (
-            (
-                db.session.query(Dashboard)
-                .join(Dashboard.slices)
-                .filter(Slice.id.in_(chart_ids))
-            )
-            .distinct()
-            .all()
+        dashboard_query = (
+            db.session.query(Dashboard)
+            .join(Dashboard.slices)
+            .filter(Slice.id.in_(chart_ids))
         )
+        dashboards = DashboardDAO._apply_base_filter(dashboard_query).distinct().all()
 
         sqllab_tab_states = (
-            db.session.query(TabState).filter(TabState.database_id == database_id).all()
+            db.session.query(TabState)
+            .filter(
+                TabState.database_id == database_id,
+                TabState.user_id == get_user_id(),
+            )
+            .all()
         )
 
         return {

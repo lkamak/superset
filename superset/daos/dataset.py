@@ -122,6 +122,9 @@ class DatasetDAO(BaseDAO[SqlaTable]):
 
     @staticmethod
     def get_related_objects(database_id: int) -> dict[str, Any]:
+        # pylint: disable=import-outside-toplevel
+        from superset.daos.dashboard import DashboardDAO
+
         charts = (
             db.session.query(Slice)
             .filter(
@@ -132,15 +135,12 @@ class DatasetDAO(BaseDAO[SqlaTable]):
         )
         chart_ids = [chart.id for chart in charts]
 
-        dashboards = (
-            (
-                db.session.query(Dashboard)
-                .join(Dashboard.slices)
-                .filter(Slice.id.in_(chart_ids))
-            )
-            .distinct()
-            .all()
+        dashboard_query = (
+            db.session.query(Dashboard)
+            .join(Dashboard.slices)
+            .filter(Slice.id.in_(chart_ids))
         )
+        dashboards = DashboardDAO._apply_base_filter(dashboard_query).distinct().all()
         return {"charts": charts, "dashboards": dashboards}
 
     @staticmethod

@@ -18,6 +18,7 @@
 """Unit tests for Superset"""
 
 import dataclasses
+import uuid
 from collections import defaultdict
 from io import BytesIO
 from unittest import mock
@@ -46,6 +47,8 @@ from superset.db_engine_specs.gsheets import GSheetsEngineSpec
 from superset.db_engine_specs.hana import HanaEngineSpec
 from superset.errors import SupersetError
 from superset.models.core import Database, ConfigurationMethod
+from superset.models.slice import Slice
+from superset.models.sql_lab import TabState
 from superset.reports.models import ReportSchedule, ReportScheduleType
 from superset.utils.database import get_example_database, get_main_database
 from superset.utils import json
@@ -2479,6 +2482,98 @@ class TestDatabaseApi(SupersetTestCase):
         uri = f"api/v1/database/{database.id}/related_objects/"
         rv = self.get_assert_metric(uri, "related_objects")
         assert rv.status_code == 200
+
+    @with_feature_flags(DASHBOARD_RBAC=True)
+    def test_get_database_related_objects_filters_inaccessible_related_data(self):
+        """
+        Database API: Test related objects only include accessible dashboards and tabs.
+        """
+        admin = self.get_user(ADMIN_USERNAME)
+        admin_role = security_manager.find_role("Admin")
+        database = self.insert_database(
+            f"database_related_objects_{uuid.uuid4().hex}",
+            get_example_database().sqlalchemy_uri_decrypted,
+            expose_in_sqllab=True,
+        )
+        table = SqlaTable(
+            schema="main",
+            table_name=f"related_objects_{uuid.uuid4().hex}",
+            database=database,
+        )
+        db.session.add(table)
+        db.session.commit()
+        chart = Slice(
+            slice_name=f"related_objects_{uuid.uuid4().hex}",
+            datasource_id=table.id,
+            datasource_type="table",
+            viz_type="table",
+        )
+        db.session.add(chart)
+        db.session.commit()
+        dashboard = self.insert_dashboard(
+            f"related_objects_{uuid.uuid4().hex}",
+            None,
+            [admin.id],
+            roles=[admin_role.id],
+            slices=[chart],
+            json_metadata='{"native_filter_configuration": [{"name": "secret"}]}',
+            published=True,
+        )
+        other_user_tab = TabState(
+            user_id=admin.id,
+            label="another user's tab",
+            active=True,
+            database_id=database.id,
+        )
+        db.session.add(other_user_tab)
+        db.session.commit()
+        try:
+            self.login(ADMIN_USERNAME)
+            uri = f"api/v1/database/{database.id}/related_objects/"
+            rv = self.get_assert_metric(uri, "related_objects")
+            assert rv.status_code == 200
+            response = json.loads(rv.data.decode("utf-8"))
+            assert response["dashboards"]["count"] == 1
+            assert response["sqllab_tab_states"]["count"] == 1
+            self.logout()
+
+            all_database_access = security_manager.add_permission_view_menu(
+                "all_database_access", "all_database_access"
+            )
+            with self.temporary_user(
+                clone_user=self.get_user(GAMMA_USERNAME),
+                extra_pvms=[all_database_access],
+                login=True,
+            ) as user:
+                own_tab = TabState(
+                    user_id=user.id,
+                    label="my tab",
+                    active=True,
+                    database_id=database.id,
+                )
+                db.session.add(own_tab)
+                db.session.commit()
+                try:
+                    rv = self.get_assert_metric(uri, "related_objects")
+                    assert rv.status_code == 200
+                    response = json.loads(rv.data.decode("utf-8"))
+                    assert response["charts"]["count"] == 1
+                    assert response["dashboards"]["count"] == 0
+                    assert response["dashboards"]["result"] == []
+                    assert response["sqllab_tab_states"]["count"] == 1
+                    assert response["sqllab_tab_states"]["result"] == [
+                        {"id": own_tab.id, "label": "my tab", "active": True}
+                    ]
+                finally:
+                    db.session.delete(own_tab)
+                    db.session.commit()
+        finally:
+            db.session.delete(other_user_tab)
+            db.session.delete(dashboard)
+            db.session.delete(chart)
+            db.session.delete(table)
+            db.session.delete(database)
+            db.session.commit()
 
     def test_export_database(self):
         """

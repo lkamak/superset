@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import copy
 import unittest
+import uuid
 from datetime import timedelta
 from io import BytesIO
 from unittest.mock import ANY, patch
@@ -2486,6 +2487,61 @@ class TestDatasetApi(SupersetTestCase):
         assert rv.status_code == 200
         assert response["charts"]["count"] == 18
         assert response["dashboards"]["count"] == 1
+
+    @with_feature_flags(DASHBOARD_RBAC=True)
+    def test_get_dataset_related_objects_filters_inaccessible_dashboards(self):
+        """
+        Dataset API: Test related objects only include accessible dashboards.
+        """
+        admin = self.get_user(ADMIN_USERNAME)
+        admin_role = security_manager.find_role("Admin")
+        database = self.insert_database(f"dataset_related_objects_{uuid.uuid4().hex}")
+        dataset = self.insert_dataset(
+            f"related_objects_{uuid.uuid4().hex}",
+            [admin.id],
+            database=database,
+            schema="main",
+            fetch_metadata=False,
+        )
+        chart = self.insert_chart(f"related_objects_{uuid.uuid4().hex}", dataset.id)
+        dashboard = self.insert_dashboard(
+            f"related_objects_{uuid.uuid4().hex}",
+            None,
+            [admin.id],
+            roles=[admin_role.id],
+            slices=[chart],
+            json_metadata='{"native_filter_configuration": [{"name": "secret"}]}',
+            published=True,
+        )
+        try:
+            self.login(ADMIN_USERNAME)
+            uri = f"api/v1/dataset/{dataset.id}/related_objects"
+            rv = self.get_assert_metric(uri, "related_objects")
+            assert rv.status_code == 200
+            response = json.loads(rv.data.decode("utf-8"))
+            assert response["dashboards"]["count"] == 1
+            self.logout()
+
+            datasource_access = security_manager.add_permission_view_menu(
+                "datasource_access", dataset.perm
+            )
+            with self.temporary_user(
+                clone_user=self.get_user(GAMMA_USERNAME),
+                extra_pvms=[datasource_access],
+                login=True,
+            ):
+                rv = self.get_assert_metric(uri, "related_objects")
+                assert rv.status_code == 200
+                response = json.loads(rv.data.decode("utf-8"))
+                assert response["charts"]["count"] == 1
+                assert response["dashboards"]["count"] == 0
+                assert response["dashboards"]["result"] == []
+        finally:
+            db.session.delete(dashboard)
+            db.session.delete(chart)
+            db.session.delete(dataset)
+            db.session.delete(database)
+            db.session.commit()
 
     def test_get_dataset_related_objects_not_found(self):
         """
