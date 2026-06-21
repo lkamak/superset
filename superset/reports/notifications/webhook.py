@@ -15,7 +15,10 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import ipaddress
 import logging
+import socket
+from collections.abc import Iterable
 from typing import Any
 from urllib.parse import urlparse
 
@@ -34,6 +37,52 @@ from superset.utils import json
 from superset.utils.decorators import statsd_gauge
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_hostname(hostname: str) -> str:
+    return hostname.strip().lower().rstrip(".")
+
+
+def _normalize_allowed_hosts(configured_hosts: object) -> set[str]:
+    if isinstance(configured_hosts, str):
+        configured_hosts = (configured_hosts,)
+
+    if not isinstance(configured_hosts, Iterable):
+        return set()
+
+    return {
+        _normalize_hostname(host)
+        for host in configured_hosts
+        if isinstance(host, str) and host.strip()
+    }
+
+
+def _is_public_address(address: str) -> bool:
+    try:
+        return ipaddress.ip_address(address).is_global
+    except ValueError:
+        return False
+
+
+def _validate_webhook_address(hostname: str, port: int | None) -> None:
+    try:
+        addrinfo = socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
+    except OSError as ex:
+        raise NotificationParamException(
+            "Webhook failed: URL hostname could not be resolved."
+        ) from ex
+
+    if not addrinfo:
+        raise NotificationParamException(
+            "Webhook failed: URL hostname could not be resolved."
+        )
+
+    for *_, sockaddr in addrinfo:
+        address = sockaddr[0]
+        if not isinstance(address, str) or not _is_public_address(address):
+            raise NotificationParamException(
+                "Webhook failed: URL resolves to a non-public address."
+            )
 
 
 class WebhookNotification(BaseNotification):
@@ -57,6 +106,41 @@ class WebhookNotification(BaseNotification):
             return target
         except (json.JSONDecodeError, KeyError, TypeError) as ex:
             raise NotificationParamException("Webhook URL is required") from ex
+
+    def _validate_webhook_url(self, webhook_url: str) -> None:
+        parsed_url = urlparse(webhook_url)
+        hostname = parsed_url.hostname
+
+        if not parsed_url.scheme or not hostname:
+            raise NotificationParamException("Webhook failed: URL is malformed.")
+
+        try:
+            port = parsed_url.port
+        except ValueError as ex:
+            raise NotificationParamException(
+                "Webhook failed: URL port is malformed."
+            ) from ex
+
+        if current_app.config.get("ALERT_REPORTS_WEBHOOK_HTTPS_ONLY", True):
+            if parsed_url.scheme.lower() != "https":
+                raise NotificationParamException(
+                    "Webhook failed: HTTPS is required by config for webhook URLs."
+                )
+
+        allowed_hosts = _normalize_allowed_hosts(
+            current_app.config.get("ALERT_REPORTS_WEBHOOK_ALLOWED_HOSTS", ())
+        )
+        normalized_hostname = _normalize_hostname(hostname)
+        if normalized_hostname not in allowed_hosts:
+            raise NotificationParamException(
+                "Webhook failed: host is not configured in "
+                "ALERT_REPORTS_WEBHOOK_ALLOWED_HOSTS."
+            )
+
+        if current_app.config.get(
+            "ALERT_REPORTS_WEBHOOK_BLOCK_PRIVATE_ADDRESSES", True
+        ):
+            _validate_webhook_address(hostname, port)
 
     def _get_req_payload(self) -> dict[str, Any]:
         header_content = {
@@ -104,11 +188,7 @@ class WebhookNotification(BaseNotification):
                 is not enabled."
             )
         wh_url = self._get_webhook_url()
-        if current_app.config["ALERT_REPORTS_WEBHOOK_HTTPS_ONLY"]:
-            if urlparse(wh_url).scheme.lower() != "https":
-                raise NotificationParamException(
-                    "Webhook failed: HTTPS is required by config for webhook URLs."
-                )
+        self._validate_webhook_url(wh_url)
         payload = self._get_req_payload()
         files = self._get_files()
 

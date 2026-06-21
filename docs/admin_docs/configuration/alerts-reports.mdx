@@ -158,6 +158,24 @@ ALERT_REPORTS_WEBHOOK_HTTPS_ONLY = True
 
 When enabled, Superset rejects webhook configurations that use `http://` URLs.
 
+#### Destination Restrictions
+
+Webhook destinations must be explicitly allowed by the operator:
+
+```python
+ALERT_REPORTS_WEBHOOK_ALLOWED_HOSTS = ("hooks.example.com",)
+```
+
+The default empty allowlist rejects all webhook destinations. Host entries are matched case-insensitively against the URL hostname and should not include the URL scheme or path.
+
+Superset also rejects webhook destinations that resolve to non-public IP addresses by default:
+
+```python
+ALERT_REPORTS_WEBHOOK_BLOCK_PRIVATE_ADDRESSES = True
+```
+
+Keep this enabled unless your deployment intentionally sends webhook notifications to internal services.
+
 #### Retry Behavior
 
 Superset automatically retries webhook deliveries on `429 Too Many Requests` and `5xx` server errors using exponential backoff.
